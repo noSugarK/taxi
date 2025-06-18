@@ -9,10 +9,10 @@ from data_visualizer import DataVisualizer
 from prediction_model import PredictionModel
 
 # 设置matplotlib中文字体
-plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']  # 设置默认字体为微软雅黑
-plt.rcParams['axes.unicode_minus'] = False  # 解决保存图像时负号'-'显示为方块的问题
+plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
+plt.rcParams['axes.unicode_minus'] = False
 
-class TaxiGPSAnalyzer: # 主应用类
+class TaxiGPSAnalyzer:
     def __init__(self):
         self.cleaner = DataCleaner()
         self.analyzer = DataAnalyzer()
@@ -21,73 +21,51 @@ class TaxiGPSAnalyzer: # 主应用类
     
     def process_file(self, file, min_long, max_long, min_lati, max_lati, max_speed):
 
-        try: # 读取CSV文件
-            df = pd.read_csv(file.name)
-            print(f"成功读取文件，共{len(df)}行数据")
-        except Exception as e:
-            return {"error": f"文件读取错误: {str(e)}"}, None, None, None, None, None, None
+        # 读取CSV文件
+        df = self.cleaner.load_data(file.name)
+        print(f"成功读取文件，共{len(df)}行数据")
         
-        try: # 数据清洗
-            df_cleaned = self.cleaner.clean_data(df, min_long, max_long, min_lati, max_lati, max_speed)
-            print(f"数据清洗完成，保留{len(df_cleaned)}行数据")
-        except Exception as e:
-            return {"error": f"数据清洗错误: {str(e)}"}, None, None, None, None, None, None
+        # 数据清洗
+        df_cleaned = self.cleaner.clean_data(df, min_long, max_long, min_lati, max_lati, max_speed)
+        print(f"数据清洗完成，保留{len(df_cleaned)}行数据")
         
-        try: # 提取OD数据
-            od_data = self.analyzer.extract_od_data(df_cleaned)
-            print(f"OD数据提取完成，共{len(od_data)}对OD数据")
-        except Exception as e:
-            return {"error": f"OD数据提取错误: {str(e)}"}, self.visualizer.plot_gps_points(df_cleaned), None, None, None, None, None
+        # 提取OD数据
+        od_data = self.analyzer.extract_od_data(df_cleaned)
+        print(f"OD数据提取完成，共{len(od_data)}对OD数据")
         
-        try: # 热点聚类分析
-            hotspots, n_clusters = self.analyzer.cluster_pickup_points(od_data)
-            print(f"热点聚类分析完成，发现{n_clusters}个簇")
-        except Exception as e:
-            return {"error": f"热点聚类分析错误: {str(e)}"}, self.visualizer.plot_gps_points(df_cleaned), None, None, None, None, None
+        # 热点聚类分析
+        hotspots, n_clusters = self.analyzer.cluster_pickup_points(od_data)
+        print(f"热点聚类分析完成，发现{n_clusters}个簇")
         
-        try: # 时间分布分析
-            time_dist = self.analyzer.analyze_time_distribution(od_data)
-            print("时间分布分析完成")
-        except Exception as e:
-            return {"error": f"时间分布分析错误: {str(e)}"}, self.visualizer.plot_gps_points(df_cleaned), self.visualizer.plot_hotspots(hotspots), None, None, None, None
+        # 时间分布分析
+        time_dist = self.analyzer.analyze_time_distribution(od_data)
+        print("时间分布分析完成")
 
-        try: # 速度分析
-            speed_data = self.analyzer.calculate_average_speed(od_data)
-            print("速度分析完成")
-        except Exception as e:
-            return {"error": f"速度分析错误: {str(e)}"}, self.visualizer.plot_gps_points(df_cleaned), self.visualizer.plot_hotspots(hotspots), self.visualizer.plot_time_distribution(time_dist), None, None, None
+        # 速度分析
+        speed_data = self.analyzer.calculate_average_speed(od_data)
+        print("速度分析完成")
         
-        try: # 载客数量分析
-            occupied_data = self.analyzer.count_occupied_taxis(od_data)
-            print("载客数量分析完成")
-        except Exception as e:
-            return {"error": f"载客数量分析错误: {str(e)}"}, self.visualizer.plot_gps_points(df_cleaned), self.visualizer.plot_hotspots(hotspots), self.visualizer.plot_time_distribution(time_dist), self.visualizer.plot_speed_by_hour(speed_data), None, None
+        # 载客数量分析
+        occupied_data = self.analyzer.count_occupied_taxis(od_data)
+        print("载客数量分析完成")
         
-        try: # 距离分析
-            distance_data = self.analyzer.analyze_trip_distance(od_data)
-            print("距离分析完成")
-        except Exception as e:
-            return {"error": f"距离分析错误: {str(e)}"}, self.visualizer.plot_gps_points(df_cleaned), self.visualizer.plot_hotspots(hotspots), self.visualizer.plot_time_distribution(time_dist), self.visualizer.plot_speed_by_hour(speed_data), self.visualizer.plot_occupied_taxis(occupied_data), None
+        # 距离分析
+        distance_data = self.analyzer.analyze_trip_distance(od_data)
+        print("距离分析完成")
         
-        try: # 乘客需求预测 (示例)
-            demand_prediction = self.predictor.predict_demand(od_data, 'hourly')
-            print("乘客需求预测完成")
-        except Exception as e:
-            return {"error": f"乘客需求预测错误: {str(e)}"}, self.visualizer.plot_gps_points(df_cleaned), self.visualizer.plot_hotspots(hotspots), self.visualizer.plot_time_distribution(time_dist), self.visualizer.plot_speed_by_hour(speed_data), self.visualizer.plot_occupied_taxis(occupied_data), distance_plot
+        # 乘客需求预测 (示例)
+        demand_prediction = self.predictor.predict_demand(od_data, 'hourly')
+        print("乘客需求预测完成")
 
         
         eta_prediction = "N/A"
         if not od_data.empty:
-            try:
-                first_od = od_data.iloc[0]
-                start_loc = (first_od['O_lng'], first_od['O_lat'])
-                end_loc = (first_od['D_lng'], first_od['D_lat'])
-                current_time = first_od['O_time'] # 使用订单的起始时间作为当前时间示例
-                eta_prediction = self.predictor.predict_eta(start_loc, end_loc, current_time)
-                print("ETA预测完成")
-            except Exception as e:
-                print(f"ETA预测错误: {str(e)}")
-                eta_prediction = f"ETA预测错误: {str(e)}"
+            first_od = od_data.iloc[0]
+            start_loc = (first_od['O_lng'], first_od['O_lat'])
+            end_loc = (first_od['D_lng'], first_od['D_lat'])
+            current_time = first_od['O_time'] # 使用订单的起始时间作为当前时间示例
+            eta_prediction = self.predictor.predict_eta(start_loc, end_loc, current_time)
+            print("ETA预测完成")
 
         # 生成可视化结果
         gps_plot = self.visualizer.plot_gps_points(df_cleaned)
@@ -166,7 +144,6 @@ def create_interface():# Gradio
 
     return iface
 
-# 主函数
 if __name__ == "__main__":
     iface = create_interface()
     iface.launch()
