@@ -3,3 +3,4 @@ matplotlib
 gradio
 scikit-learn
 numpy
+geopandas
