@@ -1,5 +1,4 @@
 import pandas as pd
-import pandas as pd
 from datetime import datetime
 
 class DataCleaner:
@@ -12,7 +11,7 @@ class DataCleaner:
             df = pd.read_csv(file_path, header=None, names=['id', 'time', 'long', 'lati', 'status', 'speed'])
         return df
 
-    def clean_data(self, df, min_long=113.8, max_long=114.5, min_lati=22.4, max_lati=22.8, max_speed=120):
+    def clean_data(self, df, min_long=113.85, max_long=114.6, min_lati=22.4, max_lati=22.8, max_speed=120):
         df_cleaned = df.copy()
         
         # 确保按id和time排序，这是后续处理的基础
