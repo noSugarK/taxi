@@ -43,7 +43,7 @@ class DataVisualizer:
         plt.ylim(22.4, 22.8)
         """
 
-        fig.suptitle('热门上客点分布', fontsize=16, y=0.95)  # y 控制标题垂直位置
+        fig.suptitle('GPS点分布图', fontsize=16, y=0.95)  # y 控制标题垂直位置
         fig.supxlabel('经度')
         fig.supylabel('纬度')
         # 设置显示范围
