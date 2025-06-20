@@ -104,10 +104,10 @@ def create_interface():# Gradio
                 file_input = gr.File(label="上传CSV文件")
                 
                 with gr.Accordion("清洗参数设置", open=False):
-                    min_long_input = gr.Number(label="最小经度", value=113.8)
-                    max_long_input = gr.Number(label="最大经度", value=114.5)
+                    min_long_input = gr.Number(label="最小经度", value=113.75)
+                    max_long_input = gr.Number(label="最大经度", value=114.6)
                     min_lati_input = gr.Number(label="最小纬度", value=22.4)
-                    max_lati_input = gr.Number(label="最大纬度", value=22.8)
+                    max_lati_input = gr.Number(label="最大纬度", value=22.85)
                     max_speed_input = gr.Number(label="最大速度 (km/h)", value=120)
 
                 submit_btn = gr.Button("开始分析")
