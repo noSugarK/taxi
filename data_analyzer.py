@@ -175,9 +175,10 @@ class DataAnalyzer:
             end_time = row['D_time']
 
             # 确保时间在范围内
-            if start_time in occupied_count.index and end_time in occupied_count.index:
+            if start_time >= min_time and end_time <= max_time:
                 # 在载客时间段内增加计数
-                occupied_count.loc[start_time:end_time, 'number'] += 1
+                mask = (occupied_count.index >= start_time) & (occupied_count.index <= end_time)
+                occupied_count.loc[mask, 'number'] += 1
 
         # 重置索引，将时间作为列
         occupied_count = occupied_count.reset_index()
