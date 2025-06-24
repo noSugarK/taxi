@@ -1,6 +1,9 @@
-pandas
-matplotlib
-gradio
-scikit-learn
-numpy
-geopandas
+pandas~=2.3.0
+matplotlib~=3.10.3
+gradio~=5.34.0
+scikit-learn~=1.7.0
+numpy~=2.3.0
+geopandas~=1.1.0
+shapely~=2.1.1
+folium~=0.20.0
+coordinatesconverter~=0.1.5
