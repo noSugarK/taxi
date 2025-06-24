@@ -1,7 +1,6 @@
-import pandas as pd
 import os
+import pandas as pd
 import numpy as np
-from sklearn.cluster import DBSCAN
 from datetime import datetime, timedelta
 import math
 from sklearn.cluster import DBSCAN
@@ -86,12 +85,23 @@ class DataAnalyzer:
         return c * r
 
     def cluster_pickup_points(self, od_data, eps=0.01, min_samples=10):
-        """对上客点进行密度聚类"""
+        """
+        对上客点进行密度聚类，优化参数以获得更好的聚类效果
+        """
         # 提取上客点坐标
         pickup_coords = od_data[['O_lng', 'O_lat']].values
 
-        # 使用DBSCAN进行聚类
-        db = DBSCAN(eps=eps, min_samples=min_samples).fit(pickup_coords)
+        # 打印坐标范围用于调试
+        lng_min, lat_min = np.min(pickup_coords, axis=0)
+        lng_max, lat_max = np.max(pickup_coords, axis=0)
+        print(f"上客点坐标范围: 经度 {lng_min:.6f}~{lng_max:.6f}, 纬度 {lat_min:.6f}~{lat_max:.6f}")
+
+        # 计算坐标点的标准差，用于评估数据分布
+        lng_std, lat_std = np.std(pickup_coords, axis=0)
+        print(f"坐标点标准差: 经度 {lng_std:.6f}, 纬度 {lat_std:.6f}")
+
+        # 使用DBSCAN进行聚类，进一步降低参数以识别更多小热点
+        db = DBSCAN(eps=eps, min_samples=min_samples, metric='haversine').fit(pickup_coords)
         labels = db.labels_
 
         # 添加聚类标签到数据中
@@ -99,34 +109,55 @@ class DataAnalyzer:
 
         # 计算聚类结果
         n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        noise_points = len(od_data[od_data['cluster'] == -1])
+
+        print(f"聚类完成: 发现{n_clusters}个簇，{noise_points}个噪声点")
+
+        # 打印每个簇的大小
+        if n_clusters > 0:
+            cluster_sizes = pd.Series(labels).value_counts()
+            print("各簇大小分布:")
+            for cluster_id, size in cluster_sizes.items():
+                if cluster_id != -1:  # 排除噪声点
+                    print(f"  簇 {cluster_id}: {size} 个点")
 
         # 计算每个簇的中心点和热力值
         hotspots = []
 
-        # 按时间段分组
-        od_data.loc[:, 'hour'] = od_data['O_time'].dt.hour
-        time_groups = od_data.groupby('hour')
-        for hour, hour_group in time_groups:
-            # 对每个时间段内的簇进行分析
-            for cluster_id in set(hour_group['cluster']):
-                if cluster_id != -1:  # 排除噪声点
-                    cluster_points = hour_group[hour_group['cluster'] == cluster_id]
+        # 不按时间段分组，只做总体分析
+        for cluster_id in set(labels):
+            if cluster_id != -1:  # 排除噪声点
+                cluster_points = od_data[od_data['cluster'] == cluster_id]
 
-                    # 计算簇的中心点(平均经纬度)
-                    center_lng = cluster_points['O_lng'].mean()
-                    center_lat = cluster_points['O_lat'].mean()
+                # 检查是否有passenger_count列
+                if 'passenger_count' in cluster_points.columns:
+                    weights = cluster_points['passenger_count']
+                else:
+                    weights = None  # 使用None表示统一权重
 
-                    # 计算热力值(簇中点的数量)
-                    count = len(cluster_points)
+                # 计算簇的中心点(加权平均经纬度)
+                center_lng = np.average(cluster_points['O_lng'], weights=weights)
+                center_lat = np.average(cluster_points['O_lat'], weights=weights)
 
-                    hotspots.append({
-                        'lng': center_lng,
-                        'lat': center_lat,
-                        'count': count,
-                        'time': f"{hour:02d}:00"
-                    })
+                # 计算热力值(簇中点的数量)
+                count = len(cluster_points)
 
-        return pd.DataFrame(hotspots), n_clusters
+                # 计算簇的覆盖范围(标准差)
+                lng_std = cluster_points['O_lng'].std()
+                lat_std = cluster_points['O_lat'].std()
+                coverage = np.sqrt(lng_std ** 2 + lat_std ** 2) * 111  # 转换为公里
+
+                hotspots.append({
+                    'lng': center_lng,
+                    'lat': center_lat,
+                    'count': count,
+                    'coverage_km': coverage,
+                    'avg_passengers': cluster_points[
+                        'passenger_count'].mean() if 'passenger_count' in cluster_points.columns else 0,
+                    'cluster_id': cluster_id
+                })
+
+        return pd.DataFrame(hotspots), n_clusters, od_data
 
     def analyze_time_distribution(self, od_data, interval='15min'):
         """分析乘客打车的时间分布"""
@@ -160,10 +191,16 @@ class DataAnalyzer:
 
     def count_occupied_taxis(self, od_data):
         """统计载客出租车的数量"""
+        # 确保时间列是datetime类型
+        if not pd.api.types.is_datetime64_dtype(od_data['O_time']):
+            od_data.loc[:, 'O_time'] = pd.to_datetime(od_data['O_time'])
+        if not pd.api.types.is_datetime64_dtype(od_data['D_time']):
+            od_data.loc[:, 'D_time'] = pd.to_datetime(od_data['D_time'])
+
         # 创建时间范围
         min_time = od_data['O_time'].min().replace(hour=0, minute=0, second=0)
         max_time = min_time + timedelta(days=1)
-        time_range = pd.date_range(start=min_time, end=max_time, freq='1min')
+        time_range = pd.date_range(start=min_time, end=max_time, freq='15min')  # 使用15分钟间隔
 
         # 初始化结果DataFrame
         occupied_count = pd.DataFrame(index=time_range)
@@ -192,7 +229,7 @@ class DataAnalyzer:
         od_data.loc[:, 'distance_category'] = pd.cut(
             od_data['OD_Dis_km'],
             bins=[0, 4, 8, float('inf')],
-            labels=['near', 'middle', 'far']
+            labels=['短途(<4km)', '中途(4-8km)', '长途(>8km)']
         )
 
         # 按日期分组统计各类别数量
@@ -217,13 +254,16 @@ class DataAnalyzer:
 
     def analyze_order_features(self, od_data):
         """分析订单特征，统计两个区域之间的订单数量"""
-        sz_path = sz_path = os.path.join(os.path.dirname(__file__), 'sz', 'sz.shp')
+        sz_path = os.path.join(os.path.dirname(__file__), 'sz', 'sz.shp')
         region_data = gpd.read_file(sz_path, encoding='utf8')
 
         od_data['O_region'] = od_data.apply(lambda row: self.get_region(row['O_lng'], row['O_lat'], region_data),
                                             axis=1)
         od_data['D_region'] = od_data.apply(lambda row: self.get_region(row['D_lng'], row['D_lat'], region_data),
                                             axis=1)
+
+        # 过滤掉区域为空的数据
+        od_data = od_data.dropna(subset=['O_region', 'D_region'])
 
         order_count = od_data.groupby(['O_region', 'D_region']).size().reset_index(name='count')
         return order_count
