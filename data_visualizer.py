@@ -3,13 +3,14 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 import matplotlib
+import matplotlib.colors as mcolors
 from datetime import datetime
 import os
 
 
 class DataVisualizer:
     def __init__(self):
-        self.default_figsize = (8, 6)  # 设置默认图片大小
+        self.default_figsize = (10, 6)  # 设置默认图片大小
 
     def plot_gps_points(self, df, save_path=None):
         """绘制GPS点分布图（带行政区划边界）"""
@@ -18,7 +19,7 @@ class DataVisualizer:
         sz = gpd.read_file(sz_path, encoding='utf8')
 
         # 创建图形和坐标轴
-        fig = plt.figure(figsize=(10, 6), dpi=100)
+        fig = plt.figure(figsize=self.default_figsize, dpi=100)
         ax = plt.subplot(111)
 
         # 绘制行政区划边界
@@ -33,19 +34,10 @@ class DataVisualizer:
         cbar = plt.colorbar(scatter, cax=cax)
         cbar.set_label('状态 (0=空车, 1=载客)')
 
-        """
-        plt.title('出租车GPS点分布')
-        plt.xlabel('经度')
-        plt.ylabel('纬度')
-
-        # 设置显示范围
-        plt.xlim(113.7, 114.3)
-        plt.ylim(22.4, 22.8)
-        """
-
         fig.suptitle('GPS点分布图', fontsize=16, y=0.95)  # y 控制标题垂直位置
         fig.supxlabel('经度')
         fig.supylabel('纬度')
+
         # 设置显示范围
         ax.set_xlim(113.7, 114.65)
         ax.set_ylim(22.4, 22.88)
@@ -53,7 +45,7 @@ class DataVisualizer:
         plt.axis('off')
 
         if save_path:
-            plt.savefig(save_path)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
         return save_path
 
@@ -64,7 +56,7 @@ class DataVisualizer:
         sz = gpd.read_file(sz_path, encoding='utf8')
 
         # 创建图形和坐标轴
-        fig = plt.figure(figsize=(10, 6), dpi=100)
+        fig = plt.figure(figsize=self.default_figsize, dpi=100)
         ax = plt.subplot(111)
 
         # 绘制行政区划边界
@@ -73,32 +65,26 @@ class DataVisualizer:
         # 设置颜色映射的最大值为数据的99%分位数
         vmax = hotspots_df['count'].quantile(0.99)
 
-        # 创建颜色映射和归一化器
-        cmap_obj = plt.cm.get_cmap('hot_r')
-        norm = matplotlib.colors.Normalize(vmin=0, vmax=vmax)
+        # 创建增强的颜色映射，提高黄色的可见性
+        colors = [(1, 1, 0.7), (1, 0.7, 0), (1, 0.4, 0), (0.8, 0, 0), (0.5, 0, 0)]  # 从浅黄色到深红色
+        cmap = mcolors.LinearSegmentedColormap.from_list('hotspots_cmap', colors)
 
         # 绘制热点散点图
-        scatter = ax.scatter(hotspots_df['lng'], hotspots_df['lat'],
-                             s=hotspots_df['count'] * 3,  # 点大小与热力值成正比
-                             alpha=0.7,
-                             c=hotspots_df['count'],
-                             cmap=cmap_obj, norm=norm)
+        scatter = ax.scatter(
+            hotspots_df['lng'], hotspots_df['lat'],
+            s=hotspots_df['count'] / vmax * 200 + 20,  # 点大小与热力值成正比
+            alpha=0.8,
+            c=hotspots_df['count'],
+            cmap=cmap,
+            norm=matplotlib.colors.Normalize(vmin=0, vmax=vmax)
+        )
 
         # 添加颜色条
         cax = plt.axes([0.15, 0.33, 0.02, 0.3])
         cbar = plt.colorbar(scatter, cax=cax)
         cbar.set_label('上客次数')
 
-        """
-        plt.title('热门上客点分布')
-        plt.xlabel('经度')
-        plt.ylabel('纬度')
-
-        # 设置显示范围
-        plt.xlim(113.7, 114.3)
-        plt.ylim(22.4, 22.8)
-        """
-        fig.suptitle('热门上客点分布', fontsize=16, y=0.95)  # y 控制标题垂直位置
+        fig.suptitle('热门上客点分布', fontsize=16, y=0.95)
 
         # 设置显示范围
         ax.set_xlim(113.7, 114.65)
@@ -106,14 +92,26 @@ class DataVisualizer:
         # 隐藏坐标轴
         plt.axis('off')
 
+        # 为最大的几个聚类添加标签
+        top_hotspots = hotspots_df.sort_values('count', ascending=False).head(5)
+        for _, row in top_hotspots.iterrows():
+            ax.annotate(
+                f"#{int(row['cluster_id'])}: {int(row['count'])}单",
+                (row['lng'], row['lat']),
+                xytext=(10, 10),
+                textcoords='offset points',
+                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", alpha=0.8),
+                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0")
+            )
+
         if save_path:
-            plt.savefig(save_path)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
         return save_path
 
     def plot_time_distribution(self, time_dist_df, save_path=None):
         """绘制时间分布图"""
-        fig, ax = plt.subplots(figsize=(10, 6))  # 调整为更适合时间分布的尺寸
+        fig, ax = plt.subplots(figsize=self.default_figsize)
 
         # 转换时间格式为字符串，便于显示
         time_labels = time_dist_df['O_time'].dt.strftime('%H:%M')
@@ -128,7 +126,7 @@ class DataVisualizer:
         plt.tight_layout()
 
         if save_path:
-            plt.savefig(save_path)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
         return save_path
 
@@ -146,13 +144,13 @@ class DataVisualizer:
         plt.grid(True, linestyle='--', alpha=0.7)
 
         if save_path:
-            plt.savefig(save_path)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
         return save_path
 
     def plot_occupied_taxis(self, occupied_df, save_path=None):
         """绘制载客出租车数量变化图"""
-        fig, ax = plt.subplots(figsize=(10, 6))  # 调整为更适合时间序列的尺寸
+        fig, ax = plt.subplots(figsize=self.default_figsize)
 
         # 转换时间格式为字符串
         if isinstance(occupied_df['TIME'].iloc[0], pd.Timestamp):
@@ -163,7 +161,7 @@ class DataVisualizer:
         # 选择部分数据点以避免过度拥挤
         step = max(1, len(occupied_df) // 48)  # 每半小时一个点
 
-        ax.plot(range(len(occupied_df)), occupied_df['number'], color='blue', linewidth=1)
+        ax.plot(range(len(occupied_df)), occupied_df['number'], color='blue', linewidth=2)
         ax.set_xticks(range(0, len(occupied_df), step))
         ax.set_xticklabels(time_labels[::step], rotation=45)
 
@@ -174,7 +172,7 @@ class DataVisualizer:
         plt.tight_layout()
 
         if save_path:
-            plt.savefig(save_path)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
         return save_path
 
@@ -187,16 +185,16 @@ class DataVisualizer:
         index = range(len(distance_df))
 
         # 绘制三种距离类别的柱状图
-        if 'near' in distance_df.columns:
-            ax.bar([i - bar_width for i in index], distance_df['near'],
+        if '短途(<4km)' in distance_df.columns:
+            ax.bar([i - bar_width for i in index], distance_df['短途(<4km)'],
                    bar_width, label='短途(<4km)', color='green')
 
-        if 'middle' in distance_df.columns:
-            ax.bar(index, distance_df['middle'],
+        if '中途(4-8km)' in distance_df.columns:
+            ax.bar(index, distance_df['中途(4-8km)'],
                    bar_width, label='中途(4-8km)', color='blue')
 
-        if 'far' in distance_df.columns:
-            ax.bar([i + bar_width for i in index], distance_df['far'],
+        if '长途(>8km)' in distance_df.columns:
+            ax.bar([i + bar_width for i in index], distance_df['长途(>8km)'],
                    bar_width, label='长途(>8km)', color='red')
 
         ax.set_xlabel('日期')
@@ -208,15 +206,12 @@ class DataVisualizer:
 
         plt.tight_layout()
         if save_path:
-            plt.savefig(save_path)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
         return save_path
 
     def plot_demand_prediction(self, demand_df, save_path=None):
-        """
-        绘制乘客需求预测的时间分布图。
-        demand_df: 包含预测需求的数据框，至少包括'hour'和'demand'列。
-        """
+        """绘制乘客需求预测的时间分布图"""
         if demand_df.empty:
             fig, ax = plt.subplots(figsize=self.default_figsize)
             ax.text(0.5, 0.5, '无需求预测数据', horizontalalignment='center', verticalalignment='center',
@@ -237,7 +232,7 @@ class DataVisualizer:
         plt.tight_layout()
 
         if save_path:
-            plt.savefig(save_path)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
         return save_path
 
@@ -264,7 +259,7 @@ class DataVisualizer:
         sz = gpd.read_file(sz_path, encoding='utf8')
 
         # 创建图形和坐标轴
-        fig = plt.figure(figsize=(10, 8), dpi=100)
+        fig = plt.figure(figsize=self.default_figsize, dpi=100)
         ax = plt.subplot(111)
 
         # 设置边界范围
@@ -290,15 +285,35 @@ class DataVisualizer:
                 # 创建颜色映射和归一化器
                 cmap_obj = plt.cm.get_cmap(cmap)
                 norm = matplotlib.colors.Normalize(vmin=0, vmax=vmax)
+
+                # 绘制散点图
+                scatter = ax.scatter(
+                    data_df['lng'], data_df['lat'],
+                    c=data_df[column],
+                    cmap=cmap_obj,
+                    norm=norm,
+                    alpha=alpha,
+                    s=s
+                )
+
+                # 添加颜色条
+                cbar = plt.colorbar(scatter, ax=ax)
+                cbar.set_label(column)
+
+        plt.title(title)
+        plt.xlabel('经度')
+        plt.ylabel('纬度')
+        plt.axis('on')
+
         if save_path:
-            plt.savefig(save_path)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
         return save_path
 
     def plot_order_count_heatmap(self, order_count, save_path=None):
         """绘制两个区域之间订单数量的热图"""
         pivot_table = order_count.pivot(index='O_region', columns='D_region', values='count')
-        plt.figure(figsize=(10, 8))
+        plt.figure(figsize=self.default_figsize)
         plt.imshow(pivot_table, cmap='hot_r', interpolation='nearest')
         plt.colorbar(label='订单数量')
         plt.xticks(range(len(pivot_table.columns)), pivot_table.columns, rotation=90)
@@ -306,7 +321,7 @@ class DataVisualizer:
         plt.title('两个区域之间的订单数量热图')
 
         if save_path:
-            plt.savefig(save_path)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()  # 关闭图表释放内存
 
     def plot_order_prediction_heatmap(self, predictions, save_dir=None):
@@ -317,7 +332,7 @@ class DataVisualizer:
                 continue
 
             pivot_table = order_count.pivot(index='origin', columns='destination', values='demand')
-            plt.figure(figsize=(10, 8))
+            plt.figure(figsize=self.default_figsize)
             plt.imshow(pivot_table, cmap='hot_r', interpolation='nearest')
             plt.colorbar(label='需求数量')
             plt.xticks(range(len(pivot_table.columns)), pivot_table.columns, rotation=90)
@@ -326,7 +341,7 @@ class DataVisualizer:
 
             if save_dir:
                 save_path = os.path.join(save_dir, f'order_prediction_{hour:02d}.png')
-                plt.savefig(save_path)
+                plt.savefig(save_path, dpi=300, bbox_inches='tight')
             plt.close()  # 关闭图表释放内存
 
     def plot_order_prediction_summary(self, predictions, save_path=None):
@@ -371,6 +386,6 @@ class DataVisualizer:
         plt.title('所有小时的订单需求预测热力图')
 
         if save_path:
-            plt.savefig(save_path)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
         return save_path
