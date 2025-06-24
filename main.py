@@ -2,12 +2,14 @@ import gradio as gr
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+import webbrowser
 
 # 导入自定义模块
 from data_cleaner import DataCleaner
 from data_analyzer import DataAnalyzer
 from data_visualizer import DataVisualizer
 from prediction_model import PredictionModel
+from map_generator import generate_order_line_map, generate_sample_point_map
 
 # 设置matplotlib中文字体
 plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
@@ -103,6 +105,14 @@ class TaxiGPSAnalyzer:
         demand_plot_path = os.path.join(temp_dir, "demand_plot.png")
         self.visualizer.plot_demand_prediction(demand_prediction, demand_plot_path)
 
+        # 生成地图
+        order_line_map_path = generate_order_line_map(od_data)
+        sample_point_map_path = generate_sample_point_map(df_cleaned)
+
+        # 转换为绝对路径
+        order_abs_path = os.path.abspath(order_line_map_path)
+        point_abs_path = os.path.abspath(sample_point_map_path)
+
         # 生成分析摘要
         summary = {
             "数据量": len(df),
@@ -125,7 +135,7 @@ class TaxiGPSAnalyzer:
             if not os.path.exists(path):
                 print(f"警告: 文件不存在: {path}")
 
-        return summary, gps_plot_path, hotspots_plot_path, time_plot_path, speed_plot_path, occupied_plot_path, distance_plot_path, demand_plot_path, order_heatmap_path, prediction_heatmap_path
+        return summary, gps_plot_path, hotspots_plot_path, time_plot_path, speed_plot_path, occupied_plot_path, distance_plot_path, demand_plot_path, order_heatmap_path, prediction_heatmap_path, order_abs_path, point_abs_path
 
 def create_interface():  # Gradio
     analyzer = TaxiGPSAnalyzer()
@@ -177,11 +187,33 @@ def create_interface():  # Gradio
                     with gr.TabItem("预测热力图"):
                         prediction_heatmap = gr.Image(label="预测热力图")
 
+                    with gr.TabItem("订单线映射"):
+                        order_line_map_btn = gr.Button("打开订单线映射")
+
+                    with gr.TabItem("采样点映射"):
+                        sample_point_map_btn = gr.Button("打开采样点映射")
+
+        def open_html(path):
+            webbrowser.open_new_tab(f'file:///{path.replace(os.sep, "/")}')
+
         submit_btn.click(
             fn=analyzer.process_file,
             inputs=[file_input, min_long_input, max_long_input, min_lati_input, max_lati_input, max_speed_input],
             outputs=[summary_output, gps_plot, hotspots_plot, time_plot, speed_plot, occupied_plot, distance_plot,
-                     demand_plot, order_heatmap, prediction_heatmap]
+                     demand_plot, order_heatmap, prediction_heatmap, order_line_map_btn, sample_point_map_btn]
+        )
+
+        # 修复按钮点击事件
+        order_line_map_btn.click(
+            fn=lambda path: open_html(path),
+            inputs=[order_line_map_btn],
+            outputs=[]
+        )
+
+        sample_point_map_btn.click(
+            fn=lambda path: open_html(path),
+            inputs=[sample_point_map_btn],
+            outputs=[]
         )
 
     return iface
