@@ -157,7 +157,7 @@ class DataAnalyzer:
                     'cluster_id': cluster_id
                 })
 
-        return pd.DataFrame(hotspots), n_clusters, od_data
+        return pd.DataFrame(hotspots), n_clusters
 
     def analyze_time_distribution(self, od_data, interval='15min'):
         """分析乘客打车的时间分布"""
