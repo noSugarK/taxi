@@ -84,7 +84,7 @@ class DataAnalyzer:
         r = 6371  # 地球半径(千米)
         return c * r
 
-    def cluster_pickup_points(self, od_data, eps=0.01, min_samples=10):
+    def cluster_pickup_points(self, od_data, eps=0.01, min_samples=5):
         """
         对上客点进行密度聚类，优化参数以获得更好的聚类效果
         """

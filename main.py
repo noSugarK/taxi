@@ -39,6 +39,7 @@ class TaxiGPSAnalyzer:
         # 提取OD数据
         od_data = self.analyzer.extract_od_data(df_cleaned)
         print(f"OD数据提取完成，共{len(od_data)}对OD数据")
+        print("OD数据的列名:", list(od_data.columns))
 
         # 热点聚类分析
         hotspots, n_clusters = self.analyzer.cluster_pickup_points(od_data)
@@ -60,28 +61,18 @@ class TaxiGPSAnalyzer:
         distance_data = self.analyzer.analyze_trip_distance(od_data)
         print("距离分析完成")
 
-        # 乘客需求预测
-        demand_prediction = self.predictor.predict_demand(od_data, 'hourly')
-        print("乘客需求预测完成")
+        # # 乘客需求预测
+        # demand_prediction = self.predictor.predict_demand(od_data, 'hourly')
+        # print("乘客需求预测完成")
 
-        eta_prediction = "N/A"
-        if not od_data.empty:
-            first_od = od_data.iloc[0]
-            start_loc = (first_od['O_lng'], first_od['O_lat'])
-            end_loc = (first_od['D_lng'], first_od['D_lat'])
-            current_time = first_od['O_time']
-            eta_prediction = self.predictor.predict_eta(start_loc, end_loc, current_time)
-            print("ETA预测完成")
-
-        # 订单特征分析
-        order_count = self.analyzer.analyze_order_features(od_data)
-        order_heatmap_path = os.path.join(temp_dir, "order_heatmap.png")
-        self.visualizer.plot_order_count_heatmap(order_count, order_heatmap_path)
-
-        # 订单预测
-        order_predictions = self.analyzer.predict_orders(od_data)
-        prediction_heatmap_path = os.path.join(temp_dir, "prediction_heatmap.png")
-        self.visualizer.plot_order_prediction_summary(order_predictions, prediction_heatmap_path)
+        # eta_prediction = "N/A"
+        # if not od_data.empty:
+        #     first_od = od_data.iloc[0]
+        #     start_loc = (first_od['O_lng'], first_od['O_lat'])
+        #     end_loc = (first_od['D_lng'], first_od['D_lat'])
+        #     current_time = first_od['O_time']
+        #     eta_prediction = self.predictor.predict_eta(start_loc, end_loc, current_time)
+        #     print("ETA预测完成")
 
         # 生成可视化结果
         gps_plot_path = os.path.join(temp_dir, "gps_plot.png")
@@ -102,8 +93,18 @@ class TaxiGPSAnalyzer:
         distance_plot_path = os.path.join(temp_dir, "distance_plot.png")
         self.visualizer.plot_distance_distribution(distance_data, distance_plot_path)
 
-        demand_plot_path = os.path.join(temp_dir, "demand_plot.png")
-        self.visualizer.plot_demand_prediction(demand_prediction, demand_plot_path)
+        # demand_plot_path = os.path.join(temp_dir, "demand_plot.png")
+        # self.visualizer.plot_demand_prediction(demand_prediction, demand_plot_path)
+        #
+        # # 订单特征分析
+        # order_count = self.analyzer.analyze_order_features(od_data)
+        # order_heatmap_path = os.path.join(temp_dir, "order_heatmap.png")
+        # self.visualizer.plot_order_count_heatmap(order_count, order_heatmap_path)
+        #
+        # # 订单预测
+        # order_predictions = self.analyzer.predict_orders(od_data)
+        # prediction_heatmap_path = os.path.join(temp_dir, "prediction_heatmap.png")
+        # self.visualizer.plot_order_prediction_summary(order_predictions, prediction_heatmap_path)
 
         # 生成地图
         order_line_map_path = generate_order_line_map(od_data)
@@ -122,20 +123,17 @@ class TaxiGPSAnalyzer:
             "平均行程距离": f"{od_data['OD_Dis_km'].mean():.2f} km",
             "平均行程时间": f"{od_data['OD_TIME_s'].mean() / 60:.2f} 分钟",
             "平均行驶速度": f"{od_data['OD_Dis_km'].sum() / (od_data['OD_TIME_s'].sum() / 3600):.2f} km/h",
-            "乘客需求预测": demand_prediction.to_dict('records') if not demand_prediction.empty else "无数据",
-            "首个订单ETA预测": eta_prediction
         }
 
         # 确保所有图像都存在
         for path in [
             gps_plot_path, hotspots_plot_path, time_plot_path,
-            speed_plot_path, occupied_plot_path, distance_plot_path,
-            demand_plot_path, order_heatmap_path, prediction_heatmap_path
+            speed_plot_path, occupied_plot_path, distance_plot_path
         ]:
             if not os.path.exists(path):
                 print(f"警告: 文件不存在: {path}")
 
-        return summary, gps_plot_path, hotspots_plot_path, time_plot_path, speed_plot_path, occupied_plot_path, distance_plot_path, demand_plot_path, order_heatmap_path, prediction_heatmap_path, order_abs_path, point_abs_path
+        return summary, gps_plot_path, hotspots_plot_path, time_plot_path, speed_plot_path, occupied_plot_path, distance_plot_path, order_abs_path, point_abs_path
 
 def create_interface():  # Gradio
     analyzer = TaxiGPSAnalyzer()
@@ -178,14 +176,14 @@ def create_interface():  # Gradio
                     with gr.TabItem("出行距离"):
                         distance_plot = gr.Image(label="出行距离分布")
 
-                    with gr.TabItem("需求预测"):
-                        demand_plot = gr.Image(label="乘客需求预测")
-
-                    with gr.TabItem("订单热力图"):
-                        order_heatmap = gr.Image(label="订单热力图")
-
-                    with gr.TabItem("预测热力图"):
-                        prediction_heatmap = gr.Image(label="预测热力图")
+                    # with gr.TabItem("需求预测"):
+                    #     demand_plot = gr.Image(label="乘客需求预测")
+                    #
+                    # with gr.TabItem("订单热力图"):
+                    #     order_heatmap = gr.Image(label="订单热力图")
+                    #
+                    # with gr.TabItem("预测热力图"):
+                    #     prediction_heatmap = gr.Image(label="预测热力图")
 
                     with gr.TabItem("订单线映射"):
                         order_line_map_btn = gr.Button("打开订单线映射")
@@ -200,7 +198,7 @@ def create_interface():  # Gradio
             fn=analyzer.process_file,
             inputs=[file_input, min_long_input, max_long_input, min_lati_input, max_lati_input, max_speed_input],
             outputs=[summary_output, gps_plot, hotspots_plot, time_plot, speed_plot, occupied_plot, distance_plot,
-                     demand_plot, order_heatmap, prediction_heatmap, order_line_map_btn, sample_point_map_btn]
+                     order_line_map_btn, sample_point_map_btn]
         )
 
         # 修复按钮点击事件
