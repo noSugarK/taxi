@@ -3,6 +3,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 import webbrowser
+import json
+import tempfile
+from datetime import datetime
 
 # 导入自定义模块
 from data_cleaner import DataCleaner
@@ -10,6 +13,7 @@ from data_analyzer import DataAnalyzer
 from data_visualizer import DataVisualizer
 from prediction_model import PredictionModel
 from map_generator import generate_order_line_map, generate_sample_point_map
+from dynamic_heatmap import generate_heatmap_data, generate_heatmap_html
 
 # 设置matplotlib中文字体
 plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
@@ -21,7 +25,7 @@ class TaxiGPSAnalyzer:
         self.cleaner = DataCleaner()
         self.analyzer = DataAnalyzer()
         self.visualizer = DataVisualizer()
-        self.predictor = PredictionModel()
+        # self.predictor = PredictionModel()
 
     def process_file(self, file, min_long, max_long, min_lati, max_lati, max_speed):
         # 创建临时文件夹存储图表
@@ -35,6 +39,7 @@ class TaxiGPSAnalyzer:
         # 数据清洗
         df_cleaned = self.cleaner.clean_data(df, min_long, max_long, min_lati, max_lati, max_speed)
         print(f"数据清洗完成，保留{len(df_cleaned)}行数据")
+        print("df数据列名", list(df_cleaned.columns))
 
         # 提取OD数据
         od_data = self.analyzer.extract_od_data(df_cleaned)
@@ -61,18 +66,9 @@ class TaxiGPSAnalyzer:
         distance_data = self.analyzer.analyze_trip_distance(od_data)
         print("距离分析完成")
 
-        # # 乘客需求预测
-        # demand_prediction = self.predictor.predict_demand(od_data, 'hourly')
-        # print("乘客需求预测完成")
-
-        # eta_prediction = "N/A"
-        # if not od_data.empty:
-        #     first_od = od_data.iloc[0]
-        #     start_loc = (first_od['O_lng'], first_od['O_lat'])
-        #     end_loc = (first_od['D_lng'], first_od['D_lat'])
-        #     current_time = first_od['O_time']
-        #     eta_prediction = self.predictor.predict_eta(start_loc, end_loc, current_time)
-        #     print("ETA预测完成")
+        # 生成动态热力图数据
+        heatmap_data = generate_heatmap_data(df_cleaned)
+        print("动态热力图数据生成完成，包含", len(heatmap_data["time_series"]), "个时间点")
 
         # 生成可视化结果
         gps_plot_path = os.path.join(temp_dir, "gps_plot.png")
@@ -92,19 +88,6 @@ class TaxiGPSAnalyzer:
 
         distance_plot_path = os.path.join(temp_dir, "distance_plot.png")
         self.visualizer.plot_distance_distribution(distance_data, distance_plot_path)
-
-        # demand_plot_path = os.path.join(temp_dir, "demand_plot.png")
-        # self.visualizer.plot_demand_prediction(demand_prediction, demand_plot_path)
-        #
-        # # 订单特征分析
-        # order_count = self.analyzer.analyze_order_features(od_data)
-        # order_heatmap_path = os.path.join(temp_dir, "order_heatmap.png")
-        # self.visualizer.plot_order_count_heatmap(order_count, order_heatmap_path)
-        #
-        # # 订单预测
-        # order_predictions = self.analyzer.predict_orders(od_data)
-        # prediction_heatmap_path = os.path.join(temp_dir, "prediction_heatmap.png")
-        # self.visualizer.plot_order_prediction_summary(order_predictions, prediction_heatmap_path)
 
         # 生成地图
         order_line_map_path = generate_order_line_map(od_data)
@@ -133,7 +116,8 @@ class TaxiGPSAnalyzer:
             if not os.path.exists(path):
                 print(f"警告: 文件不存在: {path}")
 
-        return summary, gps_plot_path, hotspots_plot_path, time_plot_path, speed_plot_path, occupied_plot_path, distance_plot_path, order_abs_path, point_abs_path
+        return summary, gps_plot_path, hotspots_plot_path, time_plot_path, speed_plot_path, occupied_plot_path, distance_plot_path, order_abs_path, point_abs_path, heatmap_data
+
 
 def create_interface():  # Gradio
     analyzer = TaxiGPSAnalyzer()
@@ -176,32 +160,37 @@ def create_interface():  # Gradio
                     with gr.TabItem("出行距离"):
                         distance_plot = gr.Image(label="出行距离分布")
 
-                    # with gr.TabItem("需求预测"):
-                    #     demand_plot = gr.Image(label="乘客需求预测")
-                    #
-                    # with gr.TabItem("订单热力图"):
-                    #     order_heatmap = gr.Image(label="订单热力图")
-                    #
-                    # with gr.TabItem("预测热力图"):
-                    #     prediction_heatmap = gr.Image(label="预测热力图")
-
                     with gr.TabItem("订单线映射"):
                         order_line_map_btn = gr.Button("打开订单线映射")
 
                     with gr.TabItem("采样点映射"):
                         sample_point_map_btn = gr.Button("打开采样点映射")
 
+                    with gr.TabItem("动态热力图"):
+                        heatmap_output = gr.HTML(label="动态热力图",min_height=800,max_height=1000)
+                        heatmap_data = gr.JSON(visible=False)  # 隐藏的JSON数据组件
+
         def open_html(path):
             webbrowser.open_new_tab(f'file:///{path.replace(os.sep, "/")}')
 
+        def process_and_display(file, min_long, max_long, min_lati, max_lati, max_speed):
+            """处理文件并返回结果，包括热力图数据"""
+            result = analyzer.process_file(file, min_long, max_long, min_lati, max_lati, max_speed)
+            # 从结果中提取热力图数据
+            heatmap_data = result[-1]
+            # 生成热力图HTML
+            heatmap_html = generate_heatmap_html(heatmap_data)
+            # 返回结果（包括热力图HTML）
+            return result[:-1] + (heatmap_html,)
+
         submit_btn.click(
-            fn=analyzer.process_file,
+            fn=process_and_display,
             inputs=[file_input, min_long_input, max_long_input, min_lati_input, max_lati_input, max_speed_input],
-            outputs=[summary_output, gps_plot, hotspots_plot, time_plot, speed_plot, occupied_plot, distance_plot,
-                     order_line_map_btn, sample_point_map_btn]
+            outputs=[summary_output, gps_plot, hotspots_plot, time_plot,
+                     speed_plot, occupied_plot, distance_plot,
+                     order_line_map_btn, sample_point_map_btn, heatmap_output]
         )
 
-        # 修复按钮点击事件
         order_line_map_btn.click(
             fn=lambda path: open_html(path),
             inputs=[order_line_map_btn],
