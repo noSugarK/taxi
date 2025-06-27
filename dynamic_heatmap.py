@@ -148,16 +148,16 @@ def generate_heatmap_html(heatmap_data, map_bounds=None):
         center_lng, center_lat = 114.0579, 22.5429
         zoom = 11
 
-    # HTML内容（修正字符串模板问题）
+    # HTML内容（模板）
     html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
-        <title>出租车GPS动态热力图（当前分钟）</title>
+        <title>出租车GPS动态热力图</title>
         <style>
-            html, body {{ height: 800px; margin: 0; padding: 0; }}
-            #map-container {{ width: 100%; height: 800px; }}
+            html, body {{ height: 100%; margin: 0; padding: 0; }}
+            #map-container {{ width: 100%; height: 100%; }}
             .controls {{
                 position: absolute; top: 10px; right: 10px; z-index: 1000;
                 background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px;
