@@ -6,6 +6,8 @@ import webbrowser
 import json
 import tempfile
 from datetime import datetime
+import pickle
+from threading import Lock
 
 # 导入自定义模块
 from data_cleaner import DataCleaner
@@ -19,6 +21,11 @@ from dynamic_heatmap import generate_heatmap_data, generate_heatmap_html
 plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
 plt.rcParams['axes.unicode_minus'] = False
 
+# 缓存目录
+CACHE_DIR = "analysis_cache"
+os.makedirs(CACHE_DIR, exist_ok=True)
+cache_lock = Lock()  # 用于缓存操作的锁
+
 
 class TaxiGPSAnalyzer:
     def __init__(self):
@@ -27,7 +34,8 @@ class TaxiGPSAnalyzer:
         self.visualizer = DataVisualizer()
         # self.predictor = PredictionModel()
 
-    def process_file(self, file, min_long, max_long, min_lati, max_lati, max_speed):
+    def process_file(self, file, min_long, max_long, min_lati, max_lati, max_speed, cache_key=None):
+        """处理文件并支持增量更新"""
         # 创建临时文件夹存储图表
         temp_dir = "temp_plots"
         os.makedirs(temp_dir, exist_ok=True)
@@ -108,23 +116,52 @@ class TaxiGPSAnalyzer:
             "平均行驶速度": f"{od_data['OD_Dis_km'].sum() / (od_data['OD_TIME_s'].sum() / 3600):.2f} km/h",
         }
 
-        # 确保所有图像都存在
-        for path in [
-            gps_plot_path, hotspots_plot_path, time_plot_path,
-            speed_plot_path, occupied_plot_path, distance_plot_path
-        ]:
-            if not os.path.exists(path):
-                print(f"警告: 文件不存在: {path}")
+        # 保存到缓存
+        if cache_key:
+            self.save_to_cache(cache_key, {
+                "summary": summary,
+                "gps_plot_path": gps_plot_path,
+                "hotspots_plot_path": hotspots_plot_path,
+                "time_plot_path": time_plot_path,
+                "speed_plot_path": speed_plot_path,
+                "occupied_plot_path": occupied_plot_path,
+                "distance_plot_path": distance_plot_path,
+                "order_abs_path": order_abs_path,
+                "point_abs_path": point_abs_path,
+                "heatmap_data": heatmap_data
+            })
 
         return summary, gps_plot_path, hotspots_plot_path, time_plot_path, speed_plot_path, occupied_plot_path, distance_plot_path, order_abs_path, point_abs_path, heatmap_data
+
+    def save_to_cache(self, key, data):
+        """保存数据到缓存"""
+        with cache_lock:
+            cache_path = os.path.join(CACHE_DIR, f"{key}.pkl")
+            with open(cache_path, 'wb') as f:
+                pickle.dump(data, f)
+
+    def load_from_cache(self, key):
+        """从缓存加载数据"""
+        with cache_lock:
+            cache_path = os.path.join(CACHE_DIR, f"{key}.pkl")
+            if os.path.exists(cache_path):
+                with open(cache_path, 'rb') as f:
+                    return pickle.load(f)
+        return None
 
 
 def create_interface():  # Gradio
     analyzer = TaxiGPSAnalyzer()
+    last_analysis_key = None  # 记录上次分析的缓存键
 
     with gr.Blocks(title="出租车GPS数据分析系统") as iface:
         gr.Markdown("# 出租车GPS数据时空特征提取及可视化系统")
         gr.Markdown("上传包含出租车GPS数据的CSV文件，系统将进行数据清洗、分析及可视化。")
+
+        # 缓存状态存储
+        cache_state = gr.State(None)
+        last_analysis_key_state = gr.State(None)
+        has_cache_state = gr.State(False)  # 新增状态用于判断是否有缓存
 
         with gr.Row():
             with gr.Column(scale=1):
@@ -139,6 +176,7 @@ def create_interface():  # Gradio
 
                 submit_btn = gr.Button("开始分析")
                 summary_output = gr.JSON(label="分析摘要")
+                status_output = gr.Text(label="状态")
 
             with gr.Column(scale=2):
                 with gr.Tabs():
@@ -167,28 +205,142 @@ def create_interface():  # Gradio
                         sample_point_map_btn = gr.Button("打开采样点映射")
 
                     with gr.TabItem("动态热力图"):
-                        heatmap_output = gr.HTML(label="动态热力图",min_height=800,max_height=1000)
-                        heatmap_data = gr.JSON(visible=False)  # 隐藏的JSON数据组件
+                        # 新增全屏链接按钮
+                        fullscreen_link = gr.Button(
+                            "全屏观看动态热力图",
+                            variant="primary",
+                            size="lg"
+                        )
+                        heatmap_output = gr.HTML(label="动态热力图", min_height=800)
+
+        def check_cache():
+            """检查是否有可用缓存"""
+            cache_files = [f for f in os.listdir(CACHE_DIR) if f.endswith('.pkl')]
+            if cache_files:
+                # 选择最新的缓存
+                latest_cache = max(cache_files, key=lambda f: os.path.getmtime(os.path.join(CACHE_DIR, f)))
+                cache_key = latest_cache[:-4]  # 去除.pkl后缀
+                return cache_key, f"找到缓存: {cache_key}", True
+            return None, "没有找到分析缓存", False
+
+        def load_cache(cache_key, has_cache):
+            """加载缓存数据，确保返回值数量与输出组件匹配"""
+            if not has_cache:
+                # 返回11个None，与输出组件数量匹配
+                return (None,) * 11
+            data = analyzer.load_from_cache(cache_key)
+            if data:
+                heatmap_html = generate_heatmap_html(data["heatmap_data"])
+                return (
+                    data["summary"],
+                    data["gps_plot_path"],
+                    data["hotspots_plot_path"],
+                    data["time_plot_path"],
+                    data["speed_plot_path"],
+                    data["occupied_plot_path"],
+                    data["distance_plot_path"],
+                    data["order_abs_path"],
+                    data["point_abs_path"],
+                    heatmap_html,
+                    f"已加载缓存: {cache_key}"
+                )
+            # 加载缓存失败时返回11个值
+            return (None,) * 10 + ("加载缓存失败",)
 
         def open_html(path):
             webbrowser.open_new_tab(f'file:///{path.replace(os.sep, "/")}')
 
-        def process_and_display(file, min_long, max_long, min_lati, max_lati, max_speed):
-            """处理文件并返回结果，包括热力图数据"""
-            result = analyzer.process_file(file, min_long, max_long, min_lati, max_lati, max_speed)
-            # 从结果中提取热力图数据
-            heatmap_data = result[-1]
+        # 获取热力图文件的相对路径
+        def get_heatmap_relative_path(heatmap_html):
+            if heatmap_html and 'temp_heatmap/heatmap.html' in heatmap_html:
+                start = heatmap_html.find('temp_heatmap/heatmap.html')
+                if start != -1:
+                    end = heatmap_html.find('"', start)
+                    if end != -1:
+                        return heatmap_html[start:end]
+            return "temp_heatmap/heatmap.html"  # 默认相对路径
+
+        # 按钮点击事件处理
+        def handle_fullscreen_click(heatmap_html, port=8000):
+            heatmap_path = get_heatmap_relative_path(heatmap_html)
+            fullscreen_url = f'http://127.0.0.1:{port}/{heatmap_path}'
+            webbrowser.open_new_tab(fullscreen_url)
+
+        def process_and_update(file, min_long, max_long, min_lati, max_lati, max_speed, prev_data):
+            """处理文件并增量更新结果"""
+            if file is None:
+                return (None,) * 11  # 没有文件时返回空值
+            # 生成缓存键
+            cache_key = f"analysis_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+            # 处理文件
+            result = analyzer.process_file(file, min_long, max_long, min_lati, max_lati, max_speed, cache_key)
+
+            # 提取结果
+            summary, gps_plot_path, hotspots_plot_path, time_plot_path, speed_plot_path, occupied_plot_path, distance_plot_path, order_abs_path, point_abs_path, heatmap_data = result
+
             # 生成热力图HTML
             heatmap_html = generate_heatmap_html(heatmap_data)
-            # 返回结果（包括热力图HTML）
-            return result[:-1] + (heatmap_html,)
 
+            # 构建更新数据
+            updated_data = {
+                "summary": summary,
+                "gps_plot_path": gps_plot_path,
+                "hotspots_plot_path": hotspots_plot_path,
+                "time_plot_path": time_plot_path,
+                "speed_plot_path": speed_plot_path,
+                "occupied_plot_path": occupied_plot_path,
+                "distance_plot_path": distance_plot_path,
+                "order_abs_path": order_abs_path,
+                "point_abs_path": point_abs_path,
+                "heatmap_html": heatmap_html
+            }
+
+            # 只更新有变化的数据，保留其他数据
+            if prev_data:
+                for key in prev_data:
+                    if key not in updated_data or updated_data[key] is None:
+                        updated_data[key] = prev_data[key]
+
+            return (updated_data["summary"], updated_data["gps_plot_path"],
+                    updated_data["hotspots_plot_path"], updated_data["time_plot_path"],
+                    updated_data["speed_plot_path"], updated_data["occupied_plot_path"],
+                    updated_data["distance_plot_path"], updated_data["order_abs_path"],
+                    updated_data["point_abs_path"], updated_data["heatmap_html"],
+                    "分析完成并更新结果")
+
+        # 初始化时检查缓存
+        iface.load(
+            fn=check_cache,
+            outputs=[last_analysis_key_state, status_output, has_cache_state]
+        )
+
+        # 加载缓存数据（确保返回值数量正确）
+        iface.load(
+            fn=load_cache,
+            inputs=[last_analysis_key_state, has_cache_state],
+            outputs=[summary_output, gps_plot, hotspots_plot, time_plot, speed_plot, occupied_plot, distance_plot,
+                     order_line_map_btn, sample_point_map_btn, heatmap_output, status_output]
+        )
+
+        # 提交按钮点击事件
         submit_btn.click(
-            fn=process_and_display,
-            inputs=[file_input, min_long_input, max_long_input, min_lati_input, max_lati_input, max_speed_input],
-            outputs=[summary_output, gps_plot, hotspots_plot, time_plot,
-                     speed_plot, occupied_plot, distance_plot,
-                     order_line_map_btn, sample_point_map_btn, heatmap_output]
+            fn=process_and_update,
+            inputs=[file_input, min_long_input, max_long_input, min_lati_input, max_lati_input, max_speed_input,
+                    cache_state],
+            outputs=[summary_output, gps_plot, hotspots_plot, time_plot, speed_plot, occupied_plot, distance_plot,
+                     order_line_map_btn, sample_point_map_btn, heatmap_output, status_output],
+        ).then(
+            fn=lambda key: key,
+            inputs=[last_analysis_key_state],
+            outputs=[cache_state]
+        )
+
+        # 全屏按钮点击事件
+        fullscreen_link.click(
+            fn=lambda path: handle_fullscreen_click(path),
+            inputs=[fullscreen_link],
+            outputs=[],
         )
 
         order_line_map_btn.click(
